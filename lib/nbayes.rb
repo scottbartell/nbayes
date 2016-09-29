@@ -220,10 +220,10 @@ module NBayes
       end
     end
 
-    # Be carefull with this function:
-    # * It decrement the number of examples for the category.
+    # Be careful with this function:
+    # * It decrements the number of examples for the category.
     #   If the being-untrained category has no more examples, it is removed from the category list.
-    # * It untrain already trained tokens, non existing tokens are not considered.
+    # * It untrains already trained tokens, non existing tokens are not considered.
     def untrain(tokens, category)
       tokens = tokens.uniq if binarized
       data.decrement_examples(category)

@@ -83,7 +83,7 @@ module NBayes
     end
 
     def each(&block)
-      data.keys.each(&block)
+      categories.each(&block)
     end
 
     # Increment the number of training examples for this category
@@ -153,7 +153,7 @@ module NBayes
     # XXX - TODO - use count_of_token_in_category
     # Return the total number of tokens we've seen across all categories
     def token_count_across_categories(token)
-      data.keys.inject(0){|sum, cat| sum + @data[cat][:tokens][token] }
+      categories.inject(0){|sum, cat| sum + @data[cat][:tokens][token] }
     end
 
     def reset_after_import

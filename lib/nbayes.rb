@@ -1,4 +1,5 @@
 require 'yaml'
+require 'redis'
 
 # == NBayes::Base
 #
@@ -13,133 +14,111 @@ require 'yaml'
 module NBayes
 
   class Vocab
-    attr_accessor :log_size, :tokens
+    attr_accessor :log_size, :redis, :prefix
 
-    def initialize(options = {})
-      @tokens = Hash.new
+    def initialize(log_size:, redis: Redis.new, prefix: "nbayes:vocab:")
+      @redis = redis
+      @prefix = prefix
+
       # for smoothing, use log of vocab size, rather than vocab size
-      @log_size = options[:log_size]
+      @log_size = log_size
+    end
+
+    def tokens
+      redis.hkeys(prefix + "tokens")
     end
 
     def delete(token)
-      tokens.delete(token)
+      redis.hdel(prefix + "tokens", token)
     end
 
     def each(&block)
-      tokens.keys.each(&block)
+      tokens.each(&block)
     end
 
     def size
+      count = redis.hlen(prefix + "tokens")
       if log_size
-        Math.log(tokens.count)
+        Math.log(count)
       else
-        tokens.count
+        count
       end
     end
 
     def seen_token(token)
-      tokens[token] = 1
+      redis.hincrby(prefix + "tokens", token, 1)
     end
   end
 
   class Data
-    attr_accessor :data
-    def initialize(options = {})
-      @data = Hash.new
-      #@data = {
-      #  "category1": {
-      #    "tokens": Hash.new(0),
-      #    "total_tokens": 0,
-      #    "examples": 0
-      #  },
-      # ...
-      #}
+    attr_reader :redis, :prefix
+
+    CATEGORIES_KEY = "categories"
+
+    def initialize(redis: Redis.new, prefix: "nbayes:data:")
+      @redis = redis
+      @prefix = prefix
     end
 
     def categories
-      data.keys
+      redis.hkeys(prefix + CATEGORIES_KEY)
     end
 
-    def token_trained?(token, category)
-      data[category] ? data[category][:tokens].has_key?(token) : false
-    end
-
-    def cat_data(category)
-      unless data[category].is_a? Hash
-        data[category] = new_category
-      end
-      data[category]
-    end
-
-    def category_stats
-      tmp = []
-      total_example_count = total_examples
-      categories.each do |category|
-        e = example_count(category)
-        t = token_count(category)
-        tmp << "For category #{category}, %d examples (%.02f%% of the total) and %d total_tokens" % [e, 100.0 * e / total_example_count, t]
-      end
-      tmp.join("\n")
-    end
-
+    # UNCHANGED
     def each(&block)
       categories.each(&block)
     end
 
-    # Increment the number of training examples for this category
-    def increment_examples(category)
-      cat_data(category)[:examples] += 1
+    def token_trained?(token, category)
+      redis.hexists(prefix + category, token)
     end
 
-    # Decrement the number of training examples for this category.
-    # Delete the category if the examples counter is 0.
+    def increment_examples(category)
+      redis.hincrby(prefix + CATEGORIES_KEY, category, 1)
+    end
+
     def decrement_examples(category)
-      cat_data(category)[:examples] -= 1
-      delete_category(category) if cat_data(category)[:examples] < 1
+      updated_example_count = redis.hincrby(prefix + CATEGORIES_KEY, category, -1)
+      if updated_example_count < 1
+        delete_category(category)
+      end
+      updated_example_count
     end
 
     def example_count(category)
-      cat_data(category)[:examples]
+      redis.hget(prefix + CATEGORIES_KEY, category).to_i
     end
 
     def token_count(category)
-      cat_data(category)[:total_tokens]
+      redis.hvals(prefix + category).inject(0) {|sum, x| sum + x.to_i}
     end
 
-    # XXX - Add Enumerable and see if I get inject?
-    # Total number of training instances
     def total_examples
-      categories.inject(0) {|sum, category| sum + example_count(category)}
+      redis.hvals(prefix + CATEGORIES_KEY).inject(0) {|sum, x| sum + x.to_i}
     end
 
-    # Add this token to this category
     def add_token_to_category(category, token)
-      cat_data(category)[:tokens][token] += 1
-      cat_data(category)[:total_tokens] += 1
+      redis.hincrby(prefix + category, token, 1)
     end
 
-    # Decrement the token counter in a category
-    # If the counter is 0, delete the token.
-    # If the total number of tokens is 0, delete the category.
     def remove_token_from_category(category, token)
-      cat_data(category)[:tokens][token] -= 1
-      delete_token_from_category(category, token) if cat_data(category)[:tokens][token] < 1
-      cat_data(category)[:total_tokens] -= 1
-      delete_category(category) if cat_data(category)[:total_tokens] < 1
+      updated_token_count = redis.hincrby(prefix + category, token, -1)
+      if updated_token_count < 1
+        delete_token_from_category(category, token)
+      end
+      updated_token_count
     end
 
-    # How many times does this token appear in this category?
     def count_of_token_in_category(category, token)
-      cat_data(category)[:tokens][token]
+      redis.hget(prefix + category, token).to_i
     end
 
     def delete_token_from_category(category, token)
-      count = count_of_token_in_category(category, token)
-      cat_data(category)[:tokens].delete(token)
-      # Update this category's total token count
-      cat_data(category)[:total_tokens] -= count
+      number_fields_deleted = redis.hdel(prefix + category, token)
+      number_fields_deleted != 0
     end
 
+    # UNCHANGED
     def purge_less_than(token, x)
       return if token_count_across_categories(token) >= x
       categories.each do |category|
@@ -148,7 +127,7 @@ module NBayes
       true  # Let caller know we removed this token
     end
 
-    # Return the total number of tokens we've seen across all categories
+    # UNCHANGED
     def token_count_across_categories(token)
       categories.inject(0) do |sum, category|
         sum + count_of_token_in_category(category, token)
@@ -156,22 +135,13 @@ module NBayes
     end
 
     def reset_after_import
-      categories.each {|category| cat_data(category)[:tokens].default = 0 }
-    end
-
-    def new_category
-      {
-        :tokens => Hash.new(0),             # holds freq counts
-        :total_tokens => 0,
-        :examples => 0
-      }
+      # don't do anything
     end
 
     def delete_category(category)
-      data.delete(category) if data.has_key?(category)
+      redis.hdel(prefix + CATEGORIES_KEY, category)
       categories
     end
-
   end
 
   class Base
@@ -179,13 +149,13 @@ module NBayes
     attr_accessor :assume_uniform, :debug, :k, :vocab, :data
     attr_reader :binarized
 
-    def initialize(options={})
+    def initialize(redis: Redis.new, binarized: false, log_vocab: nil)
       @debug = false
       @k = 1
-      @binarized = options[:binarized] || false
+      @binarized = binarized
       @assume_uniform = false
-      @vocab = Vocab.new(:log_size => options[:log_vocab])
-      @data = Data.new
+      @vocab = Vocab.new(:log_size => log_vocab, :redis => redis)
+      @data = Data.new(:redis => redis)
     end
 
     # Allows removal of low frequency words that increase processing time and may overfit

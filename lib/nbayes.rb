@@ -74,7 +74,7 @@ module NBayes
     def category_stats
       tmp = []
       total_example_count = total_examples
-      self.each do |category|
+      categories.each do |category|
         e = example_count(category)
         t = token_count(category)
         tmp << "For category #{category}, %d examples (%.02f%% of the total) and %d total_tokens" % [e, 100.0 * e / total_example_count, t]
@@ -142,7 +142,7 @@ module NBayes
 
     def purge_less_than(token, x)
       return if token_count_across_categories(token) >= x
-      self.each do |category|
+      categories.each do |category|
         delete_token_from_category(category, token)
       end
       true  # Let caller know we removed this token
@@ -156,7 +156,7 @@ module NBayes
     end
 
     def reset_after_import
-      self.each {|category| cat_data(category)[:tokens].default = 0 }
+      categories.each {|category| cat_data(category)[:tokens].default = 0 }
     end
 
     def new_category

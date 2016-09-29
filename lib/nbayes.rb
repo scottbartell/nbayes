@@ -109,9 +109,7 @@ module NBayes
     # XXX - Add Enumerable and see if I get inject?
     # Total number of training instances
     def total_examples
-      sum = 0
-      self.each {|category| sum += example_count(category) }
-      sum
+      categories.inject(0) {|sum, category| sum + example_count(category)}
     end
 
     # Add this token to this category

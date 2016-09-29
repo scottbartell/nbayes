@@ -130,42 +130,6 @@ describe "NBayes" do
     end
   end
 
-  describe "saving" do
-    before do
-      @tmp_dir = File.join( File.dirname(__FILE__), 'tmp')
-      FileUtils.mkdir(@tmp_dir)  if !File.exists?(@tmp_dir)
-      @yml_file = File.join(@tmp_dir, 'test.yml')
-    end
-
-    after do
-      FileUtils.rm(@yml_file)  if File.exists?(@yml_file)
-    end
-
-    it "should save to yaml and load from yaml" do
-      @nbayes.train( %w[a a a a], 'classA' )
-      @nbayes.train( %w[b b b b], 'classB' )
-      results = @nbayes.classify( ['b'] )
-      results['classB'].should >= 0.5
-      @nbayes.dump(@yml_file)
-      File.exists?(@yml_file).should == true
-      Redis.new.flushdb
-      @nbayes2 = NBayes::Base.from(@yml_file)
-      results = @nbayes.classify( ['b'] )
-      results['classB'].should >= 0.5
-    end
-  end
-
-  it "should dump to yaml string and load from yaml string" do
-    @nbayes.train( %w[a a a a], 'classA' )
-    @nbayes.train( %w[b b b b], 'classB' )
-    results = @nbayes.classify( ['b'] )
-    results['classB'].should >= 0.5
-    yml = @nbayes.dump(@nbayes)
-    @nbayes2 = NBayes::Base.new.load(yml)
-    results = @nbayes.classify( ['b'] )
-    results['classB'].should >= 0.5
-  end
-
   it "should delete a category" do
     @nbayes.train( %w[a a a a], 'classA' )
     @nbayes.train( %w[b b b b], 'classB' )

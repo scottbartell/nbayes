@@ -1,4 +1,3 @@
-require 'yaml'
 require 'redis'
 
 # == NBayes::Base
@@ -132,10 +131,6 @@ module NBayes
       categories.inject(0) do |sum, category|
         sum + count_of_token_in_category(category, token)
       end
-    end
-
-    def reset_after_import
-      # don't do anything
     end
 
     def delete_category(category)
@@ -273,45 +268,6 @@ module NBayes
         final_probs[cat] = value / renormalizer.to_f
       end
       final_probs
-    end
-
-    # called internally after yaml import to reset Hash defaults
-    def reset_after_import
-      data.reset_after_import
-    end
-
-    def self.from_yml(yml_data)
-      nbayes = YAML.load(yml_data)
-      nbayes.reset_after_import()  # yaml does not properly set the defaults on the Hashes
-      nbayes
-    end
-
-    # Loads class instance from a data file (e.g., yaml)
-    def self.from(yml_file)
-      File.open(yml_file, "rb") do |file|
-        self.from_yml(file.read)
-      end
-    end
-
-    # Load class instance
-    def load(yml)
-      if yml.nil?
-        nbayes = NBayes::Base.new
-      elsif yml[0..2] == "---"
-        nbayes = self.class.from_yml(yml)
-      else
-        nbayes = self.class.from(yml)
-      end
-      nbayes
-    end
-
-    # Dumps class instance to a data file (e.g., yaml) or a string
-    def dump(arg)
-      if arg.instance_of? String
-        File.open(arg, "w") {|f| YAML.dump(self, f) }
-      else
-        YAML.dump(arg)
-      end
     end
 
   end

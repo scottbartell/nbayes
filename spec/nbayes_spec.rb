@@ -6,6 +6,10 @@ describe "NBayes" do
     @nbayes = NBayes::Base.new
   end
 
+  before(:each) do
+    Redis.new.flushdb
+  end
+
   it "should assign equal probability to each class" do
     @nbayes.train( %w[a b c d e f g], 'classA' )
     @nbayes.train( %w[a b c d e f g], 'classB' )
@@ -98,6 +102,7 @@ describe "NBayes" do
     results.max_class.should == 'classA'
     results['classA'].should > 0.5
     # this does not happen in binarized mode
+    Redis.new.flushdb
     @nbayes = NBayes::Base.new(:binarized => true)
     train_it
     results = @nbayes.classify( ['a'] )
@@ -143,6 +148,7 @@ describe "NBayes" do
       results['classB'].should >= 0.5
       @nbayes.dump(@yml_file)
       File.exists?(@yml_file).should == true
+      Redis.new.flushdb
       @nbayes2 = NBayes::Base.from(@yml_file)
       results = @nbayes.classify( ['b'] )
       results['classB'].should >= 0.5

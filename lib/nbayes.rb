@@ -148,10 +148,11 @@ module NBayes
       true  # Let caller know we removed this token
     end
 
-    # XXX - TODO - use count_of_token_in_category
     # Return the total number of tokens we've seen across all categories
     def token_count_across_categories(token)
-      categories.inject(0){|sum, cat| sum + @data[cat][:tokens][token] }
+      categories.inject(0) do |sum, category|
+        sum + count_of_token_in_category(category, token)
+      end
     end
 
     def reset_after_import
